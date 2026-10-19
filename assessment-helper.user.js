@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         全民數位素養評量填答助手
 // @namespace    https://isafeevent.moe.edu.tw/userscripts/personal-helper
-// @version      1.13.1
+// @version      1.13.2
 // @description  非官方評量助手：自動填答、題庫管理、加密登入與作答計數；驗證碼及技能題最後提交需手動完成。
 // @author       asdshawn
 // @homepageURL  https://github.com/asdshawn/isafeevent-assessment-helper
@@ -1247,10 +1247,34 @@
     return;
   }
 
-  const pendingKeys=new Set(bankState.effective.filter(item=>item.status==='pending').map(item=>normalizeText(item.question)));
-  const manualUsed = answers.filter(item=>pendingKeys.has(normalizeText(item.title))).length;
-  const manualNote = manualUsed ? `其中${manualUsed}題沿用本機手動答案，尚未驗證正確，請特別檢查。` : '';
-  showSkillStatus(`16/16題已選取。${manualNote}最後的「送出答案」由你親自操作，尚未完成提交。${bankState.error || ''}`, bankState.warnings, 'ready-to-submit');
+  const pendingKeys = new Set(bankState.effective.filter(item => item.status === 'pending').map(item => normalizeText(item.question)));
+  const manualUsed = answers.filter(item => pendingKeys.has(normalizeText(item.title))).length;
+  const manualNote = manualUsed ? `（含 ${manualUsed} 題待確認手動答案）` : '';
+
+  // 技能題自動點擊「送出答案」
+  if (location.origin !== 'https://isafeevent.moe.edu.tw' ||
+      !/^\/exam\/do\/[0-9a-f-]+\/$/iu.test(location.pathname)) {
+    showStatus('頁面已改變，技能題未自動提交。請檢查目前頁面。');
+    return;
+  }
+
+  const submitButtons = Array.from(document.querySelectorAll('#main-content button'))
+    .filter(button => button.textContent.trim() === '送出答案');
+
+  if (submitButtons.length !== 1 || submitButtons[0].disabled) {
+    showStatus(`16/16題已填答${manualNote}，找不到可用提交按鈕，請手動送出。`);
+    return;
+  }
+
+  const submitButton = submitButtons[0];
+  if (submitButton.dataset.literacyHelperSubmitted === '1') {
+    showStatus('本頁已發出技能題提交，請等候成績結算。助手不會重複提交。');
+    return;
+  }
+
+  submitButton.dataset.literacyHelperSubmitted = '1';
+  showSkillStatus(`16/16題已完成填答${manualNote}，正在自動送出答案並結算成績...`, bankState.warnings, 'submitting-exam');
+  submitButton.click();
 
   // Codex執行時負責驗證碼及新題目；獨立腳本不會自動呼叫聊天。
   }
